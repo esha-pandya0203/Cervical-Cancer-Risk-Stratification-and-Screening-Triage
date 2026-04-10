@@ -1,0 +1,214 @@
+{
+  "input_file": "cervical-cancer_csv.csv",
+  "rows_input": 835,
+  "rows_after_dedup": 835,
+  "columns_input": 36,
+  "columns_clean_nullable": 38,
+  "columns_analysis_ready_imputed": 67,
+  "targets": [
+    "hinselmann",
+    "schiller",
+    "citology",
+    "biopsy",
+    "abnormal_any"
+  ],
+  "predictors_in_clean_nullable": [
+    "age",
+    "number_of_sexual_partners",
+    "first_sexual_intercourse_age",
+    "num_of_pregnancies",
+    "smokes",
+    "smokes_years",
+    "smokes_packs_per_year",
+    "hormonal_contraceptives",
+    "hormonal_contraceptives_years",
+    "iud",
+    "iud_years",
+    "stds",
+    "stds_number",
+    "stds_condylomatosis",
+    "stds_cervical_condylomatosis",
+    "stds_vaginal_condylomatosis",
+    "stds_vulvo_perineal_condylomatosis",
+    "stds_syphilis",
+    "stds_pelvic_inflammatory_disease",
+    "stds_genital_herpes",
+    "stds_molluscum_contagiosum",
+    "stds_aids",
+    "stds_hiv",
+    "stds_hepatitis_b",
+    "stds_hpv",
+    "stds_number_of_diagnosis",
+    "stds_time_since_first_diagnosis",
+    "stds_time_since_last_diagnosis",
+    "dx_cancer",
+    "dx_cin",
+    "dx_hpv",
+    "dx"
+  ],
+  "predictors_dropped_missing_gt_90pct": [
+    "stds_time_since_last_diagnosis",
+    "stds_time_since_first_diagnosis"
+  ],
+  "missingness_percent_by_predictor": {
+    "stds_time_since_last_diagnosis": 0.9149700598802395,
+    "stds_time_since_first_diagnosis": 0.9149700598802395,
+    "iud_years": 0.1341317365269461,
+    "iud": 0.1341317365269461,
+    "hormonal_contraceptives": 0.12335329341317365,
+    "hormonal_contraceptives_years": 0.12335329341317365,
+    "stds": 0.11976047904191617,
+    "stds_cervical_condylomatosis": 0.11976047904191617,
+    "stds_vaginal_condylomatosis": 0.11976047904191617,
+    "stds_pelvic_inflammatory_disease": 0.11976047904191617,
+    "stds_aids": 0.11976047904191617,
+    "stds_molluscum_contagiosum": 0.11976047904191617,
+    "stds_syphilis": 0.11976047904191617,
+    "stds_vulvo_perineal_condylomatosis": 0.11976047904191617,
+    "stds_condylomatosis": 0.11976047904191617,
+    "stds_number": 0.11976047904191617,
+    "stds_hepatitis_b": 0.11976047904191617,
+    "stds_hiv": 0.11976047904191617,
+    "stds_hpv": 0.11976047904191617,
+    "stds_genital_herpes": 0.11976047904191617,
+    "num_of_pregnancies": 0.06706586826347305,
+    "number_of_sexual_partners": 0.029940119760479042,
+    "smokes": 0.015568862275449102,
+    "smokes_packs_per_year": 0.015568862275449102,
+    "smokes_years": 0.015568862275449102,
+    "first_sexual_intercourse_age": 0.008383233532934131,
+    "age": 0.0,
+    "stds_number_of_diagnosis": 0.0,
+    "dx_cancer": 0.0,
+    "dx_cin": 0.0,
+    "dx_hpv": 0.0,
+    "dx": 0.0
+  },
+  "imputation_policy": "Predictors: add <col>_missing indicator, then binary->mode impute, continuous->median impute. Outcomes not imputed.",
+  "imputation_details": {
+    "age": {
+      "type": "continuous_median",
+      "fill_value": 26.0
+    },
+    "number_of_sexual_partners": {
+      "type": "continuous_median",
+      "fill_value": 2.0
+    },
+    "first_sexual_intercourse_age": {
+      "type": "continuous_median",
+      "fill_value": 17.0
+    },
+    "num_of_pregnancies": {
+      "type": "continuous_median",
+      "fill_value": 2.0
+    },
+    "smokes": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "smokes_years": {
+      "type": "continuous_median",
+      "fill_value": 0.0
+    },
+    "smokes_packs_per_year": {
+      "type": "continuous_median",
+      "fill_value": 0.0
+    },
+    "hormonal_contraceptives": {
+      "type": "binary_mode",
+      "fill_value": 1
+    },
+    "hormonal_contraceptives_years": {
+      "type": "continuous_median",
+      "fill_value": 0.5
+    },
+    "iud": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "iud_years": {
+      "type": "continuous_median",
+      "fill_value": 0.0
+    },
+    "stds": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_number": {
+      "type": "continuous_median",
+      "fill_value": 0.0
+    },
+    "stds_condylomatosis": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_cervical_condylomatosis": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_vaginal_condylomatosis": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_vulvo_perineal_condylomatosis": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_syphilis": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_pelvic_inflammatory_disease": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_genital_herpes": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_molluscum_contagiosum": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_aids": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_hiv": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_hepatitis_b": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_hpv": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "stds_number_of_diagnosis": {
+      "type": "continuous_median",
+      "fill_value": 0.0
+    },
+    "dx_cancer": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "dx_cin": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "dx_hpv": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "dx": {
+      "type": "binary_mode",
+      "fill_value": 0
+    },
+    "missing_count_predictors": {
+      "type": "continuous_median",
+      "fill_value": 2.0
+    }
+  }
+}
