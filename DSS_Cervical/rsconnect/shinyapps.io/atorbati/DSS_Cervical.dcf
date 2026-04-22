@@ -1,0 +1,12 @@
+name: DSS_Cervical
+title: DSS_Cervical
+username: atorbati
+account: atorbati
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 17197517
+bundleId: 11887722
+url: https://atorbati.shinyapps.io/DSS_Cervical/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
