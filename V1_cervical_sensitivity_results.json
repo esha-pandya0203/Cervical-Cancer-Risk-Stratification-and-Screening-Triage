@@ -1,0 +1,234 @@
+{
+  "baseline": {
+    "auc": 0.9969,
+    "mean_prob": 0.206,
+    "high_risk_count": 695,
+    "threshold": 0.0716
+  },
+  "std_misreporting": {
+    "flips_at_100pct_misreport": 4,
+    "scale_factor_results": {
+      "1.0": {
+        "mean_prob": 0.20601642902068654,
+        "high_risk_n": 695,
+        "prob_delta_pp": -1.6174577864585613e-18
+      },
+      "0.75": {
+        "mean_prob": 0.20814045207122403,
+        "high_risk_n": 695,
+        "prob_delta_pp": 0.212402305053751
+      },
+      "0.5": {
+        "mean_prob": 0.20809821593257474,
+        "high_risk_n": 695,
+        "prob_delta_pp": 0.20817869118882068
+      },
+      "0.25": {
+        "mean_prob": 0.21152619274606194,
+        "high_risk_n": 695,
+        "prob_delta_pp": 0.550976372537541
+      },
+      "0.0": {
+        "mean_prob": 0.20048252850327197,
+        "high_risk_n": 691,
+        "prob_delta_pp": -0.5533900517414528
+      }
+    }
+  },
+  "smoking": {
+    "Baseline": {
+      "mean_prob": 0.206,
+      "high_risk_n": 695,
+      "delta_pp": -0.0,
+      "flips_to_high": 0,
+      "flips_to_low": 0
+    },
+    "Unknown (\u2192 0)": {
+      "mean_prob": 0.2041,
+      "high_risk_n": 702,
+      "delta_pp": -0.189,
+      "flips_to_high": 13,
+      "flips_to_low": 6
+    },
+    "Median imputed": {
+      "mean_prob": 0.2041,
+      "high_risk_n": 702,
+      "delta_pp": -0.189,
+      "flips_to_high": 13,
+      "flips_to_low": 6
+    },
+    "+5 years": {
+      "mean_prob": 0.2277,
+      "high_risk_n": 677,
+      "delta_pp": 2.164,
+      "flips_to_high": 42,
+      "flips_to_low": 60
+    },
+    "+10 years": {
+      "mean_prob": 0.1916,
+      "high_risk_n": 571,
+      "delta_pp": -1.442,
+      "flips_to_high": 28,
+      "flips_to_low": 152
+    },
+    "Heavy smoker (20)": {
+      "mean_prob": 0.1783,
+      "high_risk_n": 556,
+      "delta_pp": -2.772,
+      "flips_to_high": 34,
+      "flips_to_low": 173
+    }
+  },
+  "iud": {
+    "Baseline": {
+      "mean_prob": 0.206,
+      "high_risk_n": 695,
+      "delta_pp": -0.0,
+      "flips_to_high": 0,
+      "flips_to_low": 0
+    },
+    "IUD not recorded (\u21920)": {
+      "mean_prob": 0.2052,
+      "high_risk_n": 698,
+      "delta_pp": -0.083,
+      "flips_to_high": 9,
+      "flips_to_low": 6
+    },
+    "IUD doubled": {
+      "mean_prob": 0.2048,
+      "high_risk_n": 695,
+      "delta_pp": -0.12,
+      "flips_to_high": 2,
+      "flips_to_low": 2
+    },
+    "IUD halved": {
+      "mean_prob": 0.2098,
+      "high_risk_n": 702,
+      "delta_pp": 0.374,
+      "flips_to_high": 8,
+      "flips_to_low": 1
+    },
+    "All patients have IUD (5yr)": {
+      "mean_prob": 0.1752,
+      "high_risk_n": 589,
+      "delta_pp": -3.082,
+      "flips_to_high": 28,
+      "flips_to_low": 134
+    }
+  },
+  "ablation_auc_drop": {
+    "Age": 0.1086,
+    "Hormonal Contraceptives (years)": 0.1009,
+    "Number of sexual partners": 0.0923,
+    "Num of pregnancies": 0.0405,
+    "STD_burden": 0.0323,
+    "IUD (years)": 0.0284,
+    "Smokes (years)": 0.0157,
+    "Cluster": 0.0039
+  },
+  "confidence_stress": {
+    "Num of pregnancies": -0.1033,
+    "Smokes (years)": -0.0131,
+    "IUD (years)": -0.0042,
+    "STD_burden": -0.0026,
+    "Number of sexual partners": 0.0007,
+    "Hormonal Contraceptives (years)": 0.0041,
+    "Age": 0.0125,
+    "Cluster": 0.0141
+  },
+  "missing_data": [
+    {
+      "n_missing": 0,
+      "auc_mean": 0.9969,
+      "prauc_mean": 0.9586,
+      "conf_mean": 0.3632
+    },
+    {
+      "n_missing": 1,
+      "auc_mean": 0.9479,
+      "prauc_mean": 0.7689,
+      "conf_mean": 0.3573
+    },
+    {
+      "n_missing": 2,
+      "auc_mean": 0.8775,
+      "prauc_mean": 0.5343,
+      "conf_mean": 0.3432
+    },
+    {
+      "n_missing": 3,
+      "auc_mean": 0.8004,
+      "prauc_mean": 0.359,
+      "conf_mean": 0.3247
+    },
+    {
+      "n_missing": 4,
+      "auc_mean": 0.716,
+      "prauc_mean": 0.215,
+      "conf_mean": 0.3102
+    },
+    {
+      "n_missing": 5,
+      "auc_mean": 0.658,
+      "prauc_mean": 0.1547,
+      "conf_mean": 0.2725
+    },
+    {
+      "n_missing": 6,
+      "auc_mean": 0.5958,
+      "prauc_mean": 0.123,
+      "conf_mean": 0.1877
+    },
+    {
+      "n_missing": 7,
+      "auc_mean": 0.5571,
+      "prauc_mean": 0.0924,
+      "conf_mean": 0.1109
+    },
+    {
+      "n_missing": 8,
+      "auc_mean": 0.4838,
+      "prauc_mean": 0.0641,
+      "conf_mean": 0.0
+    }
+  ],
+  "max_missing_features_before_5pct_auc_drop": 1,
+  "intervention_rules": [
+    {
+      "Scenario": "STD misreporting (all \u2192 0)",
+      "Finding": "4 high-risk patients flip to low-risk (0.6% of high-risk pool)",
+      "DSS Rule": "Flag prediction if STD_burden = 0 and \u22652 other risk factors are elevated",
+      "Severity": "High"
+    },
+    {
+      "Scenario": "Smoking status unknown (\u2192 0)",
+      "Finding": "Mean probability shift: -0.19 pp; 6 flips to low-risk",
+      "DSS Rule": "If patient is a known smoker, do not allow blank smoking duration; default to median imputation with warning",
+      "Severity": "Medium"
+    },
+    {
+      "Scenario": "IUD not recorded (\u2192 0)",
+      "Finding": "Mean shift: -0.08 pp; 9 flips to high-risk",
+      "DSS Rule": "Missing IUD duration inflates risk. Prompt staff to verify IUD status before finalising prediction",
+      "Severity": "Medium"
+    },
+    {
+      "Scenario": "Missing features (median imputation)",
+      "Finding": "Up to 1 features can be missing before AUC drops >5%",
+      "DSS Rule": "Show completeness score in UI. Flag predictions when >=2 features are missing",
+      "Severity": "High"
+    },
+    {
+      "Scenario": "Feature most critical for confidence",
+      "Finding": "Num of pregnancies causes the largest average confidence drop when removed",
+      "DSS Rule": "Make Num of pregnancies a required field in the DSS intake form",
+      "Severity": "High"
+    },
+    {
+      "Scenario": "Feature most critical for AUC",
+      "Finding": "Age causes the largest AUC drop when ablated (10.86 pp)",
+      "DSS Rule": "Collect Age first during intake; prioritise its accuracy",
+      "Severity": "High"
+    }
+  ]
+}
