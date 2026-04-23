@@ -707,30 +707,12 @@ server <- function(input, output, session) {
   res_auth <- secure_server(check_credentials = check_db_credentials)
   user_role <- reactive({ res_auth$role }) 
   
-  # hide tabs on load, then show only what the role allows
-  observeEvent(user_role(), {
-    role <- user_role()
-    req(nzchar(role))  # wait until role is actually set
-    
-    if (role == "clinician") {
-      # clinicians can see patient workflow only
-      showTab("main_navbar", "Home")
-      showTab("main_navbar", "Patient Search")
-      showTab("main_navbar", "Patient Risk Assessment")
-      hideTab("main_navbar", "Population Dashboard")
-      
-    } else if (role == "admin") {
-      # admins see dashboard but not patient assessment
-      showTab("main_navbar", "Home")
-      showTab("main_navbar", "Population Dashboard")
-      hideTab("main_navbar", "Patient Search")
-      hideTab("main_navbar", "Patient Risk Assessment")
-    }
-  })
+  print(res_auth)
   
   rv <- reactiveValues(
     patients = patients_df,
     selected_patient_id = NULL,
+    current_user_id = NULL,
     show_add_patient = FALSE,
     show_override = FALSE,
     override_log = data.frame(
@@ -870,69 +852,159 @@ server <- function(input, output, session) {
   observeEvent(input$save_new_patient, {
     parts <- strsplit(trimws(input$new_name), "\\s+")[[1]]
     first_name <- if (length(parts) >= 1 && nzchar(parts[1])) parts[1] else "New"
-    last_name <- if (length(parts) >= 2) paste(parts[-1], collapse = " ") else "Patient"
+    last_name  <- if (length(parts) >= 2) paste(parts[-1], collapse = " ") else "Patient"
     
-    new_id <- sprintf("P%04d", nrow(rv$patients) + 1)
-    new_row <- rv$patients[1, , drop = FALSE]
+    # 1. insert into patient, get back the generated UUID
+    new_patient <- dbGetQuery(con, "
+    INSERT INTO patient (patient_id, first_name, last_name, dob, phone_contact, address, is_active)
+    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, TRUE)
+    RETURNING patient_id::text
+    ", params = list(
+      first_name,
+      last_name,
+      as.character(input$new_dob),
+      input$new_phone,
+      input$new_address
+    ))
+    new_patient_id <- new_patient$patient_id[1]
     
-    # Reset to NA then repopulate
-    new_row[1, ] <- NA
-    for (nm in names(new_row)) {
-      if (nm %in% names(feature_medians)) new_row[[nm]] <- feature_medians[[nm]]
-    }
+    req(res_auth$user)
     
-    new_row$patient_id <- new_id
-    new_row$first_name <- first_name
-    new_row$last_name <- last_name
-    new_row$patient_name <- paste(first_name, last_name)
-    new_row$dob <- as.character(input$new_dob)
-    new_row$address <- input$new_address
-    new_row$city <- input$new_city
-    new_row$state <- "PA"
-    new_row$zip <- input$new_zip
-    new_row$phone <- input$new_phone
-    new_row$email <- paste0(tolower(first_name), ".", tolower(gsub("\\s+", "", last_name)), new_id, "@demohealth.org")
+    current_user <- dbGetQuery(con, "
+    SELECT user_id::text FROM app_user 
+    WHERE email = $1 
+    LIMIT 1
+  ", params = list(res_auth$user))
     
-    new_row$age <- input$new_age
-    new_row$number_of_sexual_partners <- input$new_partners
-    new_row$first_sexual_intercourse_age <- input$new_firstsex
-    new_row$num_of_pregnancies <- input$new_preg
-    new_row$smokes <- as.numeric(input$new_smokes)
-    new_row$smokes_years <- input$new_smokes_years
-    new_row$smokes_packs_per_year <- input$new_smokes_packs
-    new_row$hormonal_contraceptives <- as.numeric(input$new_hc)
-    new_row$hormonal_contraceptives_years <- input$new_hc_years
-    new_row$iud <- as.numeric(input$new_iud)
-    new_row$iud_years <- input$new_iud_years
-    new_row$stds <- as.numeric(input$new_stds)
-    new_row$stds_number <- input$new_stds_number
-    new_row$dx_hpv <- as.numeric(input$new_dx_hpv)
-    new_row$dx_cancer <- as.numeric(input$new_dx_cancer)
-    new_row$dx_cin <- 0
-    new_row$dx <- as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0
+    current_user_id <- current_user$user_id[1]
     
+    # 2. insert into encounter using the new patient_id
+    new_encounter <- dbGetQuery(con, "
+    INSERT INTO encounter (encounter_id, patient_id, encounter_date)
+    VALUES (gen_random_uuid(), $1::uuid, CURRENT_DATE)
+    RETURNING encounter_id::text
+    ", params = list(new_patient_id, current_user_id))
+    new_encounter_id <- new_encounter$encounter_id[1]
+    
+    # 3. insert into risk_assessment using the new encounter_id
+    new_assessment <- dbGetQuery(con, "
+    INSERT INTO risk_assessment (
+      assessment_id, encounter_id, age_at_assessment, num_sexual_partners,
+      num_pregnancies, smokes, smokes_years, smokes_packs_year,
+      hormonal_contraceptives, hc_years, iud, iud_years,
+      std, std_count, dx_cancer, dx_cin, dx_hpv,
+      first_sexual_intercourse_age
+    )
+    VALUES (
+      gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, $7,
+      $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+    )
+    RETURNING assessment_id::text
+  ", params = list(
+    new_encounter_id,
+    input$new_age,
+    input$new_partners,
+    input$new_preg,
+    as.logical(as.numeric(input$new_smokes)),
+    input$new_smokes_years,
+    input$new_smokes_packs,
+    as.logical(as.numeric(input$new_hc)),
+    input$new_hc_years,
+    as.logical(as.numeric(input$new_iud)),
+    input$new_iud_years,
+    as.logical(as.numeric(input$new_stds)),
+    input$new_stds_number,
+    as.logical(as.numeric(input$new_dx_cancer)),
+    FALSE,  # dx_cin — not in the add patient form
+    as.logical(as.numeric(input$new_dx_hpv)),
+    input$new_firstsex
+  ))
+    new_assessment_id <- new_assessment$assessment_id[1]
+    
+    # 4. score the patient locally
+    new_row <- data.frame(
+      age                          = input$new_age,
+      number_of_sexual_partners    = input$new_partners,
+      first_sexual_intercourse_age = input$new_firstsex,
+      num_of_pregnancies           = input$new_preg,
+      smokes                       = as.numeric(input$new_smokes),
+      smokes_years                 = input$new_smokes_years,
+      smokes_packs_per_year        = input$new_smokes_packs,
+      hormonal_contraceptives      = as.numeric(input$new_hc),
+      hormonal_contraceptives_years = input$new_hc_years,
+      iud                          = as.numeric(input$new_iud),
+      iud_years                    = input$new_iud_years,
+      stds                         = as.numeric(input$new_stds),
+      stds_number                  = input$new_stds_number,
+      dx_cancer                    = as.numeric(input$new_dx_cancer),
+      dx_cin                       = 0,
+      dx_hpv                       = as.numeric(input$new_dx_hpv),
+      dx                           = as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0
+    )
     sc <- score_patient(new_row)
-    new_row$predicted_probability <- sc$probability
-    new_row$risk_level <- sc$risk_level
-    new_row$model_recommendation <- sc$recommendation
-    new_row$final_recommendation <- sc$recommendation
-    new_row$top_drivers <- paste(sc$top_drivers, collapse = ", ")
-    new_row$override_reason <- NA_character_
-    new_row$last_reviewed <- as.character(Sys.time())
     
-    rv$patients <- bind_rows(rv$patients, new_row)
-    rv$selected_patient_id <- new_id
-    rv$show_add_patient <- FALSE
+    # 5. insert into dss_recommendation using the new assessment_id
+    dbExecute(con, "
+    INSERT INTO dss_recommendation (
+      assessment_id, predicted_probability,
+      risk_level, recommendation_category, model_version
+    )
+    VALUES ($1::uuid, $2, $3, $4, $5)
+  ", params = list(
+    new_assessment_id,
+    sc$probability,
+    tolower(sc$risk_level),   # store as lowercase to match existing rows
+    sc$recommendation,
+    "logistic_v1"
+  ))
+    
+    # 6. add to rv$patients so the app reflects the new patient immediately
+    new_display_row <- data.frame(
+      patient_id             = new_patient_id,
+      first_name             = first_name,
+      last_name              = last_name,
+      patient_name           = paste(first_name, last_name),
+      dob                    = as.character(input$new_dob),
+      phone                  = input$new_phone,
+      address                = input$new_address,
+      email                  = NA_character_,
+      age                    = input$new_age,
+      number_of_sexual_partners    = input$new_partners,
+      first_sexual_intercourse_age = input$new_firstsex,
+      num_of_pregnancies           = input$new_preg,
+      smokes                       = as.numeric(input$new_smokes),
+      smokes_years                 = input$new_smokes_years,
+      smokes_packs_per_year        = input$new_smokes_packs,
+      hormonal_contraceptives      = as.numeric(input$new_hc),
+      hormonal_contraceptives_years = input$new_hc_years,
+      iud                          = as.numeric(input$new_iud),
+      iud_years                    = input$new_iud_years,
+      stds                         = as.numeric(input$new_stds),
+      stds_number                  = input$new_stds_number,
+      dx_cancer                    = as.numeric(input$new_dx_cancer),
+      dx_cin                       = 0,
+      dx_hpv                       = as.numeric(input$new_dx_hpv),
+      dx                           = as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0,
+      predicted_probability        = sc$probability,
+      risk_level                   = sc$risk_level,
+      model_recommendation         = sc$recommendation,
+      final_recommendation         = sc$recommendation,
+      top_drivers                  = paste(sc$top_drivers, collapse = ", "),
+      override_reason              = NA_character_,
+      last_reviewed                = as.character(Sys.time()),
+      city                         = NA_character_,
+      state                        = "PA",
+      zip                          = NA_character_,
+      stringsAsFactors             = FALSE
+    )
+    
+    rv$patients        <- bind_rows(rv$patients, new_display_row)
+    rv$selected_patient_id <- new_patient_id
+    rv$show_add_patient    <- FALSE
     updateNavbarPage(session, "main_navbar", selected = "Patient Risk Assessment")
   })
   
   output$assessment_panel <- renderUI({
-    if (isTRUE(user_role() != "clinician")) {
-      return(div(
-        class = "panel-card",
-        p("You do not have permission to access patient assessments.")
-      ))
-    } 
     if (is.null(rv$selected_patient_id)) {
       return(
         div(
