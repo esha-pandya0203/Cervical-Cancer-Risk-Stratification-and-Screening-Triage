@@ -116,6 +116,7 @@ CREATE TABLE Risk_Assessment (
   encounter_id UUID NOT NULL REFERENCES encounter(encounter_id),
   entered_by UUID NOT NULL REFERENCES app_user(user_id), 
   age_at_assessment INTEGER NOT NULl,
+  first_sexual_intercourse_age INTEGER, 
   num_sexual_partners INTEGER, 
   num_pregnancies INTEGER, 
   smokes BOOLEAN, 
@@ -289,7 +290,7 @@ INSERT INTO Risk_Factor_Catalog VALUES
 INSERT INTO App_User
     (user_id, first_name, last_name, email, password_hash, role, npi_number, is_active)
 VALUES
-    ('aa000001-0000-0000-0000-000000000000', 'Sarah', 'Mitchell', 'smitchell@clinic.org', '$2b$12$placeholder', 'physician', '1234567890', TRUE),
+    ('aa000001-0000-0000-0000-000000000000', 'Sarah', 'Mitchell', 'smitchell@clinic.org', 'pass1', 'physician', '1234567890', TRUE),
     ('aa000002-0000-0000-0000-000000000000', 'James', 'Rodriguez', 'jrodriguez@clinic.org', '$2b$12$placeholder', 'physician', '0987654321', TRUE),
     ('aa000003-0000-0000-0000-000000000000', 'Lisa', 'Park', 'lpark@clinic.org', '$2b$12$placeholder', 'physician', '1122334455', TRUE),
     ('aa000004-0000-0000-0000-000000000000', 'David', 'Williams', 'dwilliams@clinic.org', '$2b$12$placeholder', 'physician', '5566778899', TRUE),
@@ -297,12 +298,12 @@ VALUES
     ('aa000006-0000-0000-0000-000000000000', 'Robert', 'Kim', 'rkim@clinic.org', '$2b$12$placeholder', 'physician', '4433221100', TRUE),
     ('aa000007-0000-0000-0000-000000000000', 'Jennifer', 'Okonkwo', 'jokonkwo@clinic.org', '$2b$12$placeholder', 'physician', '6677889900', TRUE),
     ('aa000008-0000-0000-0000-000000000000', 'Carlos', 'Mendez', 'cmendez@clinic.org', '$2b$12$placeholder', 'physician', '0011223344', TRUE),
-    ('aa000009-0000-0000-0000-000000000000', 'Patricia', 'Chen', 'pchen@clinic.org', '$2b$12$placeholder', 'nurse', '1122334456', TRUE),
+    ('aa000009-0000-0000-0000-000000000000', 'Patricia', 'Chen', 'pchen@clinic.org', 'pass2', 'nurse', '1122334456', TRUE),
     ('aa00000a-0000-0000-0000-000000000000', 'Angela', 'Brown', 'abrown@clinic.org', '$2b$12$placeholder', 'nurse', '2233445567', TRUE),
     ('aa00000b-0000-0000-0000-000000000000', 'Diana', 'Taylor', 'dtaylor@clinic.org', '$2b$12$placeholder', 'nurse', '3344556678', TRUE),
     ('aa00000c-0000-0000-0000-000000000000', 'Monica', 'Wilson', 'mwilson@clinic.org', '$2b$12$placeholder', 'nurse', '4455667789', TRUE),
     ('aa00000d-0000-0000-0000-000000000000', 'Sandra', 'Johnson', 'sjohnson@clinic.org', '$2b$12$placeholder', 'nurse', '5566778890', TRUE),
-    ('aa00000e-0000-0000-0000-000000000000', 'Maria', 'Gonzalez', 'mgonzalez@clinic.org', '$2b$12$placeholder', 'manager', NULL, TRUE),
+    ('aa00000e-0000-0000-0000-000000000000', 'Maria', 'Gonzalez', 'mgonzalez@clinic.org', 'pass3', 'manager', NULL, TRUE),
     ('aa00000f-0000-0000-0000-000000000000', 'Thomas', 'Lee', 'tlee@clinic.org', '$2b$12$placeholder', 'manager', NULL, TRUE);
 
 -- =============================================================================
