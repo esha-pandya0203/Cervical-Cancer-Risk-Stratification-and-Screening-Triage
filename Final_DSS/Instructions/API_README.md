@@ -1,7 +1,7 @@
 # Cervical Cancer DSS — API README
 
 **`api.py` · FastAPI backend · CMU 47-775**  
-Team: Vidhi · Mia Kim · Matthew Lawlor
+Team: Abigail Torbatian · Esha Pandya · Devavrath Sandeep
 
 ---
 
