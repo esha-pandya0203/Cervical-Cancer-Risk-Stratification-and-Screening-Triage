@@ -1,3 +1,0 @@
-SUPABASE_HOST="aws-1-us-east-1.pooler.supabase.com"
-SUPABASE_PASSWORD="G2YRtk^mFA53LXk5"
-CERVICAL_API_URL="http://localhost:8001/predict"
