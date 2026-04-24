@@ -8,18 +8,12 @@ library(DT)
 library(dplyr)
 library(ggplot2)
 library(scales)
-library(shinymanager)
-library(DBI)
-library(RPostgres)
-library(pool)
 
-# custom null coalescing operator 
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0) a else b
 
 # ---------------------------
 # Helpers
 # ---------------------------
-# convert column names to R safe variable names 
 clean_names <- function(x) {
   x <- trimws(x)
   x <- gsub("Smokes \\(packs/year\\)", "Smokes packs per year", x)
@@ -37,47 +31,61 @@ clean_names <- function(x) {
   tolower(x)
 }
 
-# replaces NA values with fallback value 
+first_existing <- function(paths) {
+  for (p in paths) {
+    if (!is.null(p) && file.exists(p)) return(p)
+  }
+  NULL
+}
+
+download_first_working <- function(urls, dest) {
+  for (u in urls) {
+    ok <- tryCatch({
+      utils::download.file(u, destfile = dest, mode = "wb", quiet = TRUE)
+      TRUE
+    }, error = function(e) FALSE)
+    if (ok && file.exists(dest) && file.info(dest)$size > 0) return(dest)
+  }
+  NULL
+}
+
 coalesce_num <- function(x, fallback = 0) {
   x <- suppressWarnings(as.numeric(x))
   ifelse(is.na(x), fallback, x)
 }
 
-# convert 1/0 to "Yes"/"No" 
 binary_label <- function(x) ifelse(as.numeric(x) >= 1, "Yes", "No")
-
-# format 10 digit phone number 
-format_phone <- function(x) {
-  # strip everything except digits
-  digits <- gsub("[^0-9]", "", x)
-  
-  # remove leading country code if 11 digits starting with 1
-  if (nchar(digits) == 11 && startsWith(digits, "1")) {
-    digits <- substr(digits, 2, 11)
-  }
-  
-  # format as (XXX) XXX-XXXX
-  if (nchar(digits) == 10) {
-    paste0("(", substr(digits, 1, 3), ") ",
-           substr(digits, 4, 6), "-",
-           substr(digits, 7, 10))
-  } else {
-    x  # return original if it doesn't fit expected length
-  }
-}
 
 # ---------------------------
 # Data loading (local files only)
 # ---------------------------
-RAW_CSV_PATH <- "cervical-cancer_csv (1).csv"
-CLEAN_CSV_PATH <- "cervical_cancer_clean_nullable.csv"
-IMPUTED_CSV_PATH <- "cervical_cancer_analysis_ready_imputed.csv"
+RAW_CSV_PATH <- first_existing(c(
+  "cervical-cancer_csv (1).csv",
+  "cervical-cancer_csv.csv",
+  "data/cervical-cancer_csv (1).csv",
+  "data/cervical-cancer_csv.csv"
+))
+CLEAN_CSV_PATH <- first_existing(c(
+  "cervical_cancer_clean_nullable(3).csv",
+  "cervical_cancer_clean_nullable.csv",
+  "data/cervical_cancer_clean_nullable.csv"
+))
+IMPUTED_CSV_PATH <- first_existing(c(
+  "cervical_cancer_analysis_ready_imputed(3).csv",
+  "cervical_cancer_analysis_ready_imputed.csv",
+  "data/cervical_cancer_analysis_ready_imputed.csv"
+))
 
 load_project_data <- function() {
-  required_files <- c(RAW_CSV_PATH, CLEAN_CSV_PATH, IMPUTED_CSV_PATH)
-  missing_files <- required_files[!file.exists(required_files)]
+  required_file_labels <- c(
+    raw = RAW_CSV_PATH %||% NA_character_,
+    clean = CLEAN_CSV_PATH %||% NA_character_,
+    imputed = IMPUTED_CSV_PATH %||% NA_character_
+  )
+  missing_files <- names(required_file_labels)[
+    is.na(required_file_labels) | !file.exists(required_file_labels)
+  ]
   
-  # create an alert if files were not found 
   if (length(missing_files) > 0) {
     stop(
       paste(
@@ -164,7 +172,6 @@ for (nm in available_features) {
   analysis_model[[nm]] <- suppressWarnings(as.numeric(analysis_model[[nm]]))
 }
 
-# computes median of features for future imputation 
 feature_medians <- sapply(analysis_model[, available_features, drop = FALSE], function(x) {
   x <- suppressWarnings(as.numeric(x))
   med <- stats::median(x, na.rm = TRUE)
@@ -191,7 +198,6 @@ feature_labels <- c(
   dx = "Any prior diagnosis flag"
 )
 
-# logistic regression model predicting abnormal_any from all features 
 glm_formula <- as.formula(
   paste("abnormal_any ~", paste(available_features, collapse = " + "))
 )
@@ -263,151 +269,170 @@ score_patient <- function(patient_row, low_thr = 0.15, high_thr = 0.35) {
   )
 }
 
-load_patients_from_db <- function() {
-  dbGetQuery(con, "
-    SELECT
-      p.patient_id::text                      AS patient_id,
-      p.first_name,
-      p.last_name,
-      p.first_name || ' ' || p.last_name      AS patient_name,
-      p.dob::text                             AS dob,
-      p.phone_contact                         AS phone,
-      p.address,
-      p.email,
+# ---------------------------
+# Optional external API scoring
+# ---------------------------
+# Set these in .Renviron locally or in shinyapps.io environment variables:
+# CERVICAL_API_URL=https://your-api-host/predict
+# CERVICAL_API_KEY=your_key_if_required
+# CERVICAL_API_TIMEOUT=10
 
-      -- risk assessment inputs
-      ra.age_at_assessment                    AS age,
-      ra.first_sexual_intercourse_age         AS first_sexual_intercourse_age, 
-      ra.num_sexual_partners                  AS number_of_sexual_partners,
-      ra.num_pregnancies                      AS num_of_pregnancies,
-      ra.smokes::int                          AS smokes,
-      ra.smokes_years,
-      ra.smokes_packs_year                    AS smokes_packs_per_year,
-      ra.hormonal_contraceptives::int         AS hormonal_contraceptives,
-      ra.hc_years                             AS hormonal_contraceptives_years,
-      ra.iud::int                             AS iud,
-      ra.iud_years,
-      ra.std::int                             AS stds,
-      ra.std_count                            AS stds_number,
-      ra.dx_cancer::int                       AS dx_cancer,
-      ra.dx_cin::int                          AS dx_cin,
-      ra.dx_hpv::int                          AS dx_hpv,
-      CASE WHEN ra.dx_cancer OR ra.dx_cin
-                OR ra.dx_hpv THEN 1 ELSE 0
-      END                                     AS dx,
+api_is_configured <- function() {
+  nzchar(Sys.getenv("CERVICAL_API_URL", unset = ""))
+}
 
-      -- dss outputs
-      rec.predicted_probability,
-      initcap(rec.risk_level::text)              AS risk_level,
-      initcap(rec.recommendation_category::text) AS model_recommendation,
-      initcap(rec.recommendation_category::text) AS final_recommendation,
+api_field <- function(x, names, default = NULL) {
+  for (nm in names) {
+    if (!is.null(x[[nm]]) && length(x[[nm]]) > 0) return(x[[nm]])
+  }
+  default
+}
 
-      -- placeholders for app-managed columns
-      NULL::text                              AS override_reason,
-      NULL::text                              AS last_reviewed,
-      NULL::text                              AS top_drivers,
-      NULL::text                              AS city,
-      'PA'                                    AS state,
-      NULL::text                              AS zip
+build_api_payload <- function(patient_row, low_thr = 0.15, high_thr = 0.35) {
+  row <- patient_row[1, , drop = FALSE]
+  
+  # This payload matches the FastAPI PatientInput schema in api.py:
+  # age, sexual_partners, pregnancies, smokes_years, hc_years, iud_years,
+  # std_burden, and optional cluster. Do not nest these under "features";
+  # FastAPI expects the fields at the top JSON level.
+  list(
+    age = unname(coalesce_num(row$age, feature_medians[["age"]] %||% 35)[1]),
+    sexual_partners = unname(coalesce_num(row$number_of_sexual_partners, feature_medians[["number_of_sexual_partners"]] %||% 1)[1]),
+    pregnancies = unname(coalesce_num(row$num_of_pregnancies, feature_medians[["num_of_pregnancies"]] %||% 0)[1]),
+    smokes_years = unname(coalesce_num(row$smokes_years, 0)[1]),
+    hc_years = unname(coalesce_num(row$hormonal_contraceptives_years, 0)[1]),
+    iud_years = unname(coalesce_num(row$iud_years, 0)[1]),
+    std_burden = unname(coalesce_num(row$stds_number, coalesce_num(row$stds, 0))[1])
+  )
+}
 
-    FROM patient p
-    LEFT JOIN encounter e
-      ON e.patient_id = p.patient_id
-    LEFT JOIN risk_assessment ra
-      ON ra.encounter_id = e.encounter_id
-    LEFT JOIN dss_recommendation rec
-      ON rec.assessment_id = ra.assessment_id
-    WHERE p.is_active = TRUE
-    ORDER BY p.last_name, p.first_name
-  ")
+normalize_api_score <- function(api_body, local_score) {
+  # The repo API returns a flat PredictionResponse object, not a nested object.
+  response_obj <- api_body
+  
+  prob <- suppressWarnings(as.numeric(api_field(
+    response_obj,
+    c("probability", "predicted_probability", "risk_probability", "risk_score", "score"),
+    local_score$probability
+  )))
+  prob <- max(min(prob, 0.999), 0.001)
+
+  raw_prediction <- as.character(api_field(
+    response_obj,
+    c("prediction", "risk_level", "risk_category", "category", "triage_level"),
+    local_score$risk_level
+  ))
+  raw_prediction_clean <- toupper(gsub("[_-]", " ", raw_prediction))
+  
+  risk_level <- if (grepl("HIGH", raw_prediction_clean)) {
+    "High"
+  } else if (grepl("LOW", raw_prediction_clean)) {
+    "Low"
+  } else if (grepl("MED", raw_prediction_clean)) {
+    "Medium"
+  } else {
+    tools::toTitleCase(tolower(raw_prediction))
+  }
+  if (!risk_level %in% c("Low", "Medium", "High")) risk_level <- local_score$risk_level
+
+  recommendation <- as.character(api_field(
+    response_obj,
+    c("recommendation", "recommended_action", "next_step", "triage_recommendation"),
+    NA_character_
+  ))
+  if (!nzchar(recommendation) || is.na(recommendation)) {
+    recommendation <- dplyr::case_when(
+      risk_level == "Low" ~ "Routine recall",
+      risk_level == "Medium" ~ "Expedited HPV/Pap testing",
+      TRUE ~ "Referral for further evaluation"
+    )
+  }
+
+  top_drivers <- api_field(
+    response_obj,
+    c("top_drivers", "drivers", "risk_drivers", "important_features"),
+    local_score$top_drivers
+  )
+  if (is.data.frame(top_drivers)) top_drivers <- top_drivers[[1]]
+  if (is.list(top_drivers)) top_drivers <- unlist(top_drivers, use.names = FALSE)
+  top_drivers <- as.character(top_drivers)
+  top_drivers <- top_drivers[nzchar(top_drivers)]
+  if (length(top_drivers) == 0) top_drivers <- local_score$top_drivers
+  
+  confidence <- api_field(response_obj, c("confidence"), NULL)
+  confidence_tier <- api_field(response_obj, c("confidence_tier"), NULL)
+  warnings <- api_field(response_obj, c("warnings"), NULL)
+  warning_text <- ""
+  if (!is.null(warnings) && length(warnings) > 0) {
+    warning_text <- paste(" Warnings:", paste(unlist(warnings), collapse = " | "))
+  }
+  confidence_text <- ""
+  if (!is.null(confidence)) {
+    confidence_text <- paste0(" Confidence: ", round(as.numeric(confidence), 3),
+                              if (!is.null(confidence_tier)) paste0(" (", confidence_tier, ")") else "", ".")
+  }
+
+  list(
+    probability = prob,
+    risk_level = risk_level,
+    recommendation = recommendation,
+    top_drivers = top_drivers,
+    driver_code = local_score$driver_code,
+    source = "External FastAPI model",
+    api_status = paste0("API scoring completed successfully.", confidence_text, warning_text)
+  )
 }
 
 # ---------------------------
 # Demo patient registry derived from the dataset
 # ---------------------------
+set.seed(706)
 
-# Connection pool — stays open for the lifetime of the app
-con <- dbPool(
-  drv      = RPostgres::Postgres(),
-  host     = Sys.getenv("SUPABASE_HOST"),
-  dbname   = "postgres",
-  user     = "postgres.gpbadgezxcbjfugrwzpv",
-  password = Sys.getenv("SUPABASE_PASSWORD"),
-  port     = 6543,
-  sslmode  = "require" # required for Supabase
-)
-
-# Clean up the pool when the app stops
-onStop(function() poolClose(con))
-
-patients_df <- load_patients_from_db()
-
-# top_drivers computed locally since it's not stored in the DB yet
-baseline_scores <- lapply(
-  seq_len(nrow(patients_df)),
-  function(i) score_patient(patients_df[i, , drop = FALSE])
-)
-
-patients_df$top_drivers <- sapply(
-  baseline_scores,
-  function(x) paste(x$top_drivers, collapse = ", ")
-)
-
-# if predicted_probability or risk_level missing from DB rows, fill from model
-patients_df$predicted_probability <- ifelse(
-  is.na(patients_df$predicted_probability),
-  sapply(baseline_scores, function(x) x$probability),
-  patients_df$predicted_probability
-)
-
-patients_df$risk_level <- ifelse(
-  is.na(patients_df$risk_level) | patients_df$risk_level == "",
-  sapply(baseline_scores, function(x) x$risk_level),
-  patients_df$risk_level
-)
-
-patients_df$model_recommendation <- ifelse(
-  is.na(patients_df$model_recommendation) | patients_df$model_recommendation == "",
-  sapply(baseline_scores, function(x) x$recommendation),
-  patients_df$model_recommendation
-)
-
-patients_df$final_recommendation <- patients_df$model_recommendation
-patients_df$override_reason      <- NA_character_
-patients_df$last_reviewed        <- NA_character_
-
-check_db_credentials <- function(user, password) {
+make_demo_patients <- function(df) {
+  n <- nrow(df)
+  first_names <- c("Ava", "Mia", "Sophia", "Isabella", "Emma", "Olivia", "Aria", "Layla", "Nora", "Camila",
+                   "Grace", "Luna", "Chloe", "Zoey", "Maya", "Elena", "Jade", "Leah", "Naomi", "Ruby")
+  last_names <- c("Johnson", "Smith", "Brown", "Davis", "Martinez", "Taylor", "Wilson", "Anderson", "Thomas",
+                  "Moore", "Jackson", "Martin", "Lee", "Perez", "White", "Harris", "Clark", "Lewis", "Young", "Hall")
+  streets <- c("Maple Ave", "Oak St", "Hillcrest Dr", "Pine Ln", "Cedar Ct", "Lakeview Rd", "Cherry St")
+  cities <- c("Pittsburgh", "Monroeville", "Greensburg", "Bethel Park", "Cranberry", "McKeesport", "Washington")
   
-  result <- dbGetQuery(con, "
-    SELECT user_id, email, password_hash, role::text, is_active
-    FROM app_user
-    WHERE email = $1
-      AND is_active = TRUE
-    LIMIT 1
-  ", params = list(user))
+  df$patient_id <- sprintf("P%04d", seq_len(n))
+  df$first_name <- sample(first_names, n, replace = TRUE)
+  df$last_name <- sample(last_names, n, replace = TRUE)
+  df$patient_name <- paste(df$first_name, df$last_name)
   
-  # no matching user found
-  if (nrow(result) == 0) {
-    return(data.frame(result = FALSE, stringsAsFactors = FALSE))
+  age_num <- coalesce_num(df$age, 35)
+  age_num <- pmax(age_num, 18)
+  df$dob <- format(Sys.Date() - round(age_num * 365.25), "%Y-%m-%d")
+  df$address <- paste(sample(100:999, n, replace = TRUE), sample(streets, n, replace = TRUE))
+  df$city <- sample(cities, n, replace = TRUE)
+  df$state <- "PA"
+  df$zip <- sample(15000:15299, n, replace = TRUE)
+  df$phone <- paste0("(412) ", sample(200:999, n, replace = TRUE), "-", sample(1000:9999, n, replace = TRUE))
+  df$email <- paste0(tolower(df$first_name), ".", tolower(df$last_name), seq_len(n), "@demohealth.org")
+  
+  if (!"abnormal_any" %in% names(df)) {
+    outcome_cols <- intersect(c("hinselmann", "schiller", "citology", "biopsy"), names(df))
+    if (length(outcome_cols) > 0) df$abnormal_any <- do.call(pmax, c(df[outcome_cols], na.rm = TRUE))
   }
   
-  # wrong password
-  if (result$password_hash[1] != password) {
-    return(data.frame(result = FALSE, stringsAsFactors = FALSE))
-  }
-  
-  # map database role to app role
-  db_role <- result$role[1]
-  app_role <- if (db_role %in% c("physician", "nurse")) "clinician" else "admin"
-  
-  # return data.frame with result = TRUE — shinymanager requires this format
-  data.frame(
-    result   = TRUE,
-    role     = app_role,
-    user_id  = as.character(result$user_id[1]),
-    stringsAsFactors = FALSE
-  )
+  df
 }
+
+patients_df <- make_demo_patients(clean_df)
+
+# Initialize baseline risk columns
+baseline_scores <- lapply(seq_len(nrow(patients_df)), function(i) score_patient(patients_df[i, , drop = FALSE]))
+patients_df$predicted_probability <- sapply(baseline_scores, function(x) x$probability)
+patients_df$risk_level <- sapply(baseline_scores, function(x) x$risk_level)
+patients_df$model_recommendation <- sapply(baseline_scores, function(x) x$recommendation)
+patients_df$final_recommendation <- patients_df$model_recommendation
+patients_df$top_drivers <- sapply(baseline_scores, function(x) paste(x$top_drivers, collapse = ", "))
+patients_df$score_source <- "Local model"
+patients_df$api_status <- "Baseline score generated locally."
+patients_df$override_reason <- NA_character_
+patients_df$last_reviewed <- NA_character_
 
 # ---------------------------
 # UI
@@ -524,7 +549,7 @@ ui <- navbarPage(
             div(class = "hero-title", "Cervical Cancer Risk Stratification and Screening Triage"),
             div(
               class = "hero-subtitle",
-              "Reviews patient risk profiles, generate screening recommendations, and track follow-up actions across your patient panel."
+              "This prototype clinical DSS combines a clinician-facing user interface, a patient risk scoring engine, and a structured data layer. It supports three operational decisions: routine recall, expedited HPV/Pap testing, or referral for further evaluation."
             ),
             br(),
             actionButton("go_patient_search", "Open patient search", class = "blue-btn"),
@@ -535,13 +560,11 @@ ui <- navbarPage(
             4,
             div(
               class = "soft-box",
-              h4(strong("How to Use This Tool")),
+              h4(strong("DSS architecture")),
               tags$ul(
-                tags$li("Search for an existing patient or add a new one."),
-                tags$li("Enter or confirm their risk factor information."),
-                tags$li("Review the model recommendation and top risk drivers."),
-                tags$li("Override if clinical judgement differs (note that a reason for override is required)."),
-                tags$li("Download the patient summary for documentation.")
+                tags$li(strong("User interface: "), "patient search, assessment, override, dashboard"),
+                tags$li(strong("Problem processing: "), "logistic-risk scoring, top drivers, what-if thresholds"),
+                tags$li(strong("Knowledge/data system: "), "raw, cleaned, and analysis-ready cervical cancer data")
               )
             )
           )
@@ -552,24 +575,24 @@ ui <- navbarPage(
           4,
           div(
             class = "mini-card",
-            h4(strong("Patient Triage")),
-            p("Search your panel, run a risk assessment, and receive a recommendation: routine recall, expedited HPV/Pap testing, or referral for colposcopy.")
+            h4(strong("Opening screen")),
+            p("Styled to match the front-end design deck: rounded cards, light blue background, white content panels, and clear black text.")
           )
         ),
         column(
           4,
           div(
             class = "mini-card",
-            h4(strong("Explainable Recommendations")),
-            p("Every recommendation shows the top contributing risk drivers for full transparency and review.")
+            h4(strong("Point-of-care workflow")),
+            p("Patient search, risk review, assessment, recommendation, override, and summary download are all included in the prototype.")
           )
         ),
         column(
           4,
           div(
             class = "mini-card",
-            h4(strong("Population Overview")),
-            p("The population dashboard surfaces your highest-risk patients, common risk patterns, and a log of all clinician overrides.")
+            h4(strong("Population management")),
+            p("The dashboard shows risk distribution, common high-risk patterns, and override monitoring to support operational decisions.")
           )
         )
       )
@@ -633,86 +656,16 @@ ui <- navbarPage(
 )
 )
 
-login_css <- tags$style(HTML("
-  .panel-auth {
-    background: #E5F6FF !important;
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-    min-height: 100vh;
-  }
-  .panel-auth .panel.panel-primary {
-    background: #FFFFFF !important;
-    border-radius: 20px !important;
-    border: none !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
-  }
-  .panel-auth .panel-primary {
-    border-top-color: #FFFFFF !important;
-  }
-  .panel-auth .panel-body {
-    padding: 30px !important;
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-  }
-  .panel-auth #auth-shinymanager-auth-head {
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-    font-weight: 600 !important;
-    color: #333333 !important;
-    font-size: 16px !important;
-  }
-  .panel-auth .control-label {
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-    font-weight: 600 !important;
-    color: #000000 !important;
-  }
-  .panel-auth .form-control {
-    border-radius: 12px !important;
-    border: 1px solid #d7eaf6 !important;
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-    padding: 8px 12px !important;
-  }
-  .panel-auth .form-control:focus {
-    border-color: #AFCBF8 !important;
-    box-shadow: 0 0 0 3px rgba(175,203,248,0.3) !important;
-    outline: none !important;
-  }
-  .panel-auth #auth-go_auth {
-    background-color: #AFCBF8 !important;
-    border-color: #AFCBF8 !important;
-    color: #000000 !important;
-    border-radius: 14px !important;
-    font-weight: 700 !important;
-    font-family: 'Arial', 'Helvetica', sans-serif !important;
-    width: 100% !important;
-    padding: 10px !important;
-  }
-  .panel-auth #auth-go_auth:hover {
-    background-color: #93b8f5 !important;
-    border-color: #93b8f5 !important;
-  }
-"))
-
-ui <- secure_app(
-  ui, 
-  title = "Cervical Cancer DSS — Sign In",
-  tags_top = tags$div(
-    style = "text-align: center; margin-bottom: 10px;",
-    tags$h3(style = "font-weight: 700; color: #000;", "Cervical Cancer DSS")
-  ), 
-  tags_bottom = tags$head(login_css)
-) 
-
 # ---------------------------
 # Server
 # ---------------------------
 server <- function(input, output, session) {
-  res_auth <- secure_server(check_credentials = check_db_credentials)
-  user_role <- reactive({ res_auth$role }) 
-  
-  print(res_auth)
   
   rv <- reactiveValues(
     patients = patients_df,
     selected_patient_id = NULL,
-    current_user_id = NULL,
+    last_api_status = "API not called yet.",
+    last_score_source = "Local model",
     show_add_patient = FALSE,
     show_override = FALSE,
     override_log = data.frame(
@@ -739,6 +692,7 @@ server <- function(input, output, session) {
   output$patient_table <- renderDT({
     dat <- filtered_patients() %>%
       transmute(
+        patient_id,
         patient_name,
         age = round(coalesce_num(age, 0), 0),
         smokes = binary_label(smokes),
@@ -798,9 +752,9 @@ server <- function(input, output, session) {
       class = "panel-card",
       div(class = "section-title", "Selected Patient"),
       p(strong(pdat$patient_name)),
+      p(paste("ID:", pdat$patient_id)),
       p(paste("DOB:", pdat$dob)),
-      p(paste("Phone:", format_phone(pdat$phone))),
-      p(paste("Address:", pdat$address)), 
+      p(paste("Phone:", pdat$phone)),
       p(paste("Current risk level:", pdat$risk_level)),
       p(paste("Recommendation:", pdat$final_recommendation))
     )
@@ -852,155 +806,61 @@ server <- function(input, output, session) {
   observeEvent(input$save_new_patient, {
     parts <- strsplit(trimws(input$new_name), "\\s+")[[1]]
     first_name <- if (length(parts) >= 1 && nzchar(parts[1])) parts[1] else "New"
-    last_name  <- if (length(parts) >= 2) paste(parts[-1], collapse = " ") else "Patient"
+    last_name <- if (length(parts) >= 2) paste(parts[-1], collapse = " ") else "Patient"
     
-    # 1. insert into patient, get back the generated UUID
-    new_patient <- dbGetQuery(con, "
-    INSERT INTO patient (patient_id, first_name, last_name, dob, phone_contact, address, is_active)
-    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, TRUE)
-    RETURNING patient_id::text
-    ", params = list(
-      first_name,
-      last_name,
-      as.character(input$new_dob),
-      input$new_phone,
-      input$new_address
-    ))
-    new_patient_id <- new_patient$patient_id[1]
+    new_id <- sprintf("P%04d", nrow(rv$patients) + 1)
+    new_row <- rv$patients[1, , drop = FALSE]
     
-    req(res_auth$user)
+    # Reset to NA then repopulate
+    new_row[1, ] <- NA
+    for (nm in names(new_row)) {
+      if (nm %in% names(feature_medians)) new_row[[nm]] <- feature_medians[[nm]]
+    }
     
-    current_user <- dbGetQuery(con, "
-    SELECT user_id::text FROM app_user 
-    WHERE email = $1 
-    LIMIT 1
-  ", params = list(res_auth$user))
+    new_row$patient_id <- new_id
+    new_row$first_name <- first_name
+    new_row$last_name <- last_name
+    new_row$patient_name <- paste(first_name, last_name)
+    new_row$dob <- as.character(input$new_dob)
+    new_row$address <- input$new_address
+    new_row$city <- input$new_city
+    new_row$state <- "PA"
+    new_row$zip <- input$new_zip
+    new_row$phone <- input$new_phone
+    new_row$email <- paste0(tolower(first_name), ".", tolower(gsub("\\s+", "", last_name)), new_id, "@demohealth.org")
     
-    current_user_id <- current_user$user_id[1]
+    new_row$age <- input$new_age
+    new_row$number_of_sexual_partners <- input$new_partners
+    new_row$first_sexual_intercourse_age <- input$new_firstsex
+    new_row$num_of_pregnancies <- input$new_preg
+    new_row$smokes <- as.numeric(input$new_smokes)
+    new_row$smokes_years <- input$new_smokes_years
+    new_row$smokes_packs_per_year <- input$new_smokes_packs
+    new_row$hormonal_contraceptives <- as.numeric(input$new_hc)
+    new_row$hormonal_contraceptives_years <- input$new_hc_years
+    new_row$iud <- as.numeric(input$new_iud)
+    new_row$iud_years <- input$new_iud_years
+    new_row$stds <- as.numeric(input$new_stds)
+    new_row$stds_number <- input$new_stds_number
+    new_row$dx_hpv <- as.numeric(input$new_dx_hpv)
+    new_row$dx_cancer <- as.numeric(input$new_dx_cancer)
+    new_row$dx_cin <- 0
+    new_row$dx <- as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0
     
-    # 2. insert into encounter using the new patient_id
-    new_encounter <- dbGetQuery(con, "
-    INSERT INTO encounter (encounter_id, patient_id, encounter_date)
-    VALUES (gen_random_uuid(), $1::uuid, CURRENT_DATE)
-    RETURNING encounter_id::text
-    ", params = list(new_patient_id, current_user_id))
-    new_encounter_id <- new_encounter$encounter_id[1]
+    sc <- call_risk_api(new_row)
+    new_row$predicted_probability <- sc$probability
+    new_row$risk_level <- sc$risk_level
+    new_row$model_recommendation <- sc$recommendation
+    new_row$final_recommendation <- sc$recommendation
+    new_row$top_drivers <- paste(sc$top_drivers, collapse = ", ")
+    new_row$score_source <- sc$source
+    new_row$api_status <- sc$api_status
+    new_row$override_reason <- NA_character_
+    new_row$last_reviewed <- as.character(Sys.time())
     
-    # 3. insert into risk_assessment using the new encounter_id
-    new_assessment <- dbGetQuery(con, "
-    INSERT INTO risk_assessment (
-      assessment_id, encounter_id, age_at_assessment, num_sexual_partners,
-      num_pregnancies, smokes, smokes_years, smokes_packs_year,
-      hormonal_contraceptives, hc_years, iud, iud_years,
-      std, std_count, dx_cancer, dx_cin, dx_hpv,
-      first_sexual_intercourse_age
-    )
-    VALUES (
-      gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, $7,
-      $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
-    )
-    RETURNING assessment_id::text
-  ", params = list(
-    new_encounter_id,
-    input$new_age,
-    input$new_partners,
-    input$new_preg,
-    as.logical(as.numeric(input$new_smokes)),
-    input$new_smokes_years,
-    input$new_smokes_packs,
-    as.logical(as.numeric(input$new_hc)),
-    input$new_hc_years,
-    as.logical(as.numeric(input$new_iud)),
-    input$new_iud_years,
-    as.logical(as.numeric(input$new_stds)),
-    input$new_stds_number,
-    as.logical(as.numeric(input$new_dx_cancer)),
-    FALSE,  # dx_cin — not in the add patient form
-    as.logical(as.numeric(input$new_dx_hpv)),
-    input$new_firstsex
-  ))
-    new_assessment_id <- new_assessment$assessment_id[1]
-    
-    # 4. score the patient locally
-    new_row <- data.frame(
-      age                          = input$new_age,
-      number_of_sexual_partners    = input$new_partners,
-      first_sexual_intercourse_age = input$new_firstsex,
-      num_of_pregnancies           = input$new_preg,
-      smokes                       = as.numeric(input$new_smokes),
-      smokes_years                 = input$new_smokes_years,
-      smokes_packs_per_year        = input$new_smokes_packs,
-      hormonal_contraceptives      = as.numeric(input$new_hc),
-      hormonal_contraceptives_years = input$new_hc_years,
-      iud                          = as.numeric(input$new_iud),
-      iud_years                    = input$new_iud_years,
-      stds                         = as.numeric(input$new_stds),
-      stds_number                  = input$new_stds_number,
-      dx_cancer                    = as.numeric(input$new_dx_cancer),
-      dx_cin                       = 0,
-      dx_hpv                       = as.numeric(input$new_dx_hpv),
-      dx                           = as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0
-    )
-    sc <- score_patient(new_row)
-    
-    # 5. insert into dss_recommendation using the new assessment_id
-    dbExecute(con, "
-    INSERT INTO dss_recommendation (
-      assessment_id, predicted_probability,
-      risk_level, recommendation_category, model_version
-    )
-    VALUES ($1::uuid, $2, $3, $4, $5)
-  ", params = list(
-    new_assessment_id,
-    sc$probability,
-    tolower(sc$risk_level),   # store as lowercase to match existing rows
-    sc$recommendation,
-    "logistic_v1"
-  ))
-    
-    # 6. add to rv$patients so the app reflects the new patient immediately
-    new_display_row <- data.frame(
-      patient_id             = new_patient_id,
-      first_name             = first_name,
-      last_name              = last_name,
-      patient_name           = paste(first_name, last_name),
-      dob                    = as.character(input$new_dob),
-      phone                  = input$new_phone,
-      address                = input$new_address,
-      email                  = NA_character_,
-      age                    = input$new_age,
-      number_of_sexual_partners    = input$new_partners,
-      first_sexual_intercourse_age = input$new_firstsex,
-      num_of_pregnancies           = input$new_preg,
-      smokes                       = as.numeric(input$new_smokes),
-      smokes_years                 = input$new_smokes_years,
-      smokes_packs_per_year        = input$new_smokes_packs,
-      hormonal_contraceptives      = as.numeric(input$new_hc),
-      hormonal_contraceptives_years = input$new_hc_years,
-      iud                          = as.numeric(input$new_iud),
-      iud_years                    = input$new_iud_years,
-      stds                         = as.numeric(input$new_stds),
-      stds_number                  = input$new_stds_number,
-      dx_cancer                    = as.numeric(input$new_dx_cancer),
-      dx_cin                       = 0,
-      dx_hpv                       = as.numeric(input$new_dx_hpv),
-      dx                           = as.numeric(input$new_dx_hpv) + as.numeric(input$new_dx_cancer) > 0,
-      predicted_probability        = sc$probability,
-      risk_level                   = sc$risk_level,
-      model_recommendation         = sc$recommendation,
-      final_recommendation         = sc$recommendation,
-      top_drivers                  = paste(sc$top_drivers, collapse = ", "),
-      override_reason              = NA_character_,
-      last_reviewed                = as.character(Sys.time()),
-      city                         = NA_character_,
-      state                        = "PA",
-      zip                          = NA_character_,
-      stringsAsFactors             = FALSE
-    )
-    
-    rv$patients        <- bind_rows(rv$patients, new_display_row)
-    rv$selected_patient_id <- new_patient_id
-    rv$show_add_patient    <- FALSE
+    rv$patients <- bind_rows(rv$patients, new_row)
+    rv$selected_patient_id <- new_id
+    rv$show_add_patient <- FALSE
     updateNavbarPage(session, "main_navbar", selected = "Patient Risk Assessment")
   })
   
@@ -1044,7 +904,9 @@ server <- function(input, output, session) {
             selectInput("assess_dx_cancer", "Prior cancer diagnosis", choices = c("No" = 0, "Yes" = 1), selected = as.character(round(coalesce_num(pdat$dx_cancer, 0), 0))),
             sliderInput("low_threshold", "Routine / expedited threshold", min = 0.05, max = 0.40, value = 0.15, step = 0.01),
             sliderInput("high_threshold", "Expedited / referral threshold", min = 0.20, max = 0.80, value = 0.35, step = 0.01),
-            actionButton("run_assessment", "Run risk assessment", class = "blue-btn")
+            actionButton("run_assessment", "Run risk assessment", class = "blue-btn"),
+            br(), br(),
+            helpText("To use an external API, set CERVICAL_API_URL before running or deploying the app. If no API is configured, the app automatically uses the local model.")
           )
         ),
         column(
@@ -1096,7 +958,7 @@ server <- function(input, output, session) {
     rv$patients$dx_cancer[idx] <- as.numeric(input$assess_dx_cancer)
     rv$patients$dx[idx] <- ifelse(as.numeric(input$assess_dx_hpv) + as.numeric(input$assess_dx_cancer) > 0, 1, 0)
     
-    sc <- score_patient(rv$patients[idx, , drop = FALSE], input$low_threshold, input$high_threshold)
+    sc <- call_risk_api(rv$patients[idx, , drop = FALSE], input$low_threshold, input$high_threshold)
     rv$patients$predicted_probability[idx] <- sc$probability
     rv$patients$risk_level[idx] <- sc$risk_level
     rv$patients$model_recommendation[idx] <- sc$recommendation
@@ -1105,6 +967,10 @@ server <- function(input, output, session) {
       rv$patients$final_recommendation[idx] <- sc$recommendation
     }
     rv$patients$top_drivers[idx] <- paste(sc$top_drivers, collapse = ", ")
+    rv$patients$score_source[idx] <- sc$source
+    rv$patients$api_status[idx] <- sc$api_status
+    rv$last_score_source <- sc$source
+    rv$last_api_status <- sc$api_status
     rv$patients$last_reviewed[idx] <- as.character(Sys.time())
   })
   
@@ -1120,7 +986,9 @@ server <- function(input, output, session) {
         tags$span(style = "font-size: 20px; font-weight: 700;", percent(coalesce_num(pdat$predicted_probability[1], 0), accuracy = 0.1))
       ),
       p(style = "margin-top: 8px;", paste("Model recommendation:", pdat$model_recommendation[1])),
-      p(paste("Final recommendation:", pdat$final_recommendation[1]))
+      p(paste("Final recommendation:", pdat$final_recommendation[1])),
+      p(paste("Score source:", pdat$score_source[1] %||% "Local model")),
+      p(style = "font-size: 12px; color: #444;", pdat$api_status[1] %||% rv$last_api_status)
     )
   })
   
@@ -1226,8 +1094,8 @@ server <- function(input, output, session) {
         "<h1>Cervical Cancer DSS Patient Summary</h1>",
         "<div class='box'><h2>", pdat$patient_name[1], " (", pdat$patient_id[1], ")</h2>",
         "<p><strong>DOB:</strong> ", pdat$dob[1], "<br>",
-        "<strong>Address:</strong> ", pdat$address[1], "<br>",
-        "<strong>Phone:</strong> ", format_phone(pdat$phone[1]), "</p></div>",
+        "<strong>Address:</strong> ", pdat$address[1], ", ", pdat$city[1], ", ", pdat$state[1], " ", pdat$zip[1], "<br>",
+        "<strong>Phone:</strong> ", pdat$phone[1], "</p></div>",
         "<div class='box'><h2>Clinical Inputs</h2>",
         "<p><strong>Age:</strong> ", pdat$age[1], "<br>",
         "<strong>Smoking:</strong> ", binary_label(pdat$smokes[1]), " (years: ", round(coalesce_num(pdat$smokes_years[1], 0), 1), ", packs/year: ", round(coalesce_num(pdat$smokes_packs_per_year[1], 0), 2), ")<br>",
@@ -1243,7 +1111,9 @@ server <- function(input, output, session) {
         "<p><strong>Predicted probability:</strong> ", percent(coalesce_num(pdat$predicted_probability[1], 0), accuracy = 0.1), "<br>",
         "<strong>Top risk drivers:</strong> ", pdat$top_drivers[1], "<br>",
         "<strong>Model recommendation:</strong> ", pdat$model_recommendation[1], "<br>",
-        "<strong>Final recommendation:</strong> ", pdat$final_recommendation[1], "</p>",
+        "<strong>Final recommendation:</strong> ", pdat$final_recommendation[1], "<br>",
+        "<strong>Score source:</strong> ", pdat$score_source[1] %||% "Local model", "<br>",
+        "<strong>API status:</strong> ", pdat$api_status[1] %||% "Not available", "</p>",
         if (!is.na(pdat$override_reason[1]) && nzchar(pdat$override_reason[1])) paste0("<p><strong>Override rationale:</strong> ", pdat$override_reason[1], "</p>") else "",
         "</div>",
         "<p><em>Note: this is a prototype clinician-facing summary generated for course project demonstration.</em></p>",
