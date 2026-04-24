@@ -1,7 +1,7 @@
 # Cervical Cancer DSS — Setup Guide
 
 CMU 47-775 Healthcare Information Systems
-Team: Vidhi · Mia Kim · Matthew Lawlor
+Team: Abigail Torbatian · Esha Pandya · Devavrath Sandeep
 
 ---
 
