@@ -1,6 +1,6 @@
 # Cervical Cancer Risk — Decision Support System (DSS)
 ### 47-775 Healthcare Information Systems · Carnegie Mellon University
-**Team:** Vidhi · Mia Kim · Matthew Lawlor
+**Team:** Abigail Torbatian · Esha Pandya · Devavrath Sandeep
 
 ---
 
